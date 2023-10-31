@@ -1,0 +1,8 @@
+- Add voice control
+	- Push to talk
+	- When talking is finished, place transcription in a text box (refer to previous scene with chat)
+	- Press OK to submit memory (caption)
+- When memory is submitted, generate image with DALL-E and add to memory list (image and caption)
+	- Once imageUrl is populated, generate image
+...
+- When 3 images and captions have been generated, then the whole story can be generated 
