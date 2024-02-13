@@ -1,19 +1,24 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.XR.Interaction.Toolkit;
 
 public class MemPhoto : MonoBehaviour
 {
-    [SerializeField] private string _photoCaption = "I was...";
+    [SerializeField] public string _photoCaption = "I was waiting on the beach, staring at the sunrise";
 
-    [SerializeField] private int _photoNumber = 0;
+    [SerializeField] private int _photoNumber = 1;
 
     [SerializeField] private Material _photoMaterial;
     [SerializeField] private MemDealerOpenAIManager _aiManager;
-    
+    [SerializeField] private TMP_Text _captionArea;
+    [SerializeField] private TMP_Text _headerArea;
     private string _photoUrl;
+
 
     // Start is called before the first frame update
     void Start()
@@ -21,34 +26,40 @@ public class MemPhoto : MonoBehaviour
         
     }
 
-    async void RenderImageData()
+    async public void GetMemoryData()
+    {
+        PhotoData imageData = await _aiManager.AddToCaptionsAndGenerateImage(_photoCaption);
+        RenderImageData(imageData);
+    }
+
+    async void RenderImageData(PhotoData data)
     {
         // Get corresponding memory data from list of memories
-        PhotoData _memoryData = _aiManager._memoriesForStory[_photoNumber];
+        PhotoData _memoryData = data;
         _photoUrl = _memoryData.imageUrl;
+        Debug.Log(_photoUrl);
+        Debug.Log(_memoryData.caption);
         var _imageTexture = await GetRemoteTexture(_photoUrl);
         _photoMaterial.mainTexture = _imageTexture;
         _photoCaption = _memoryData.caption;
+        _captionArea.text = _photoCaption + "...";
+        _headerArea.text = _photoNumber.ToString();
     }
 
-    public static async Task<Texture2D> GetRemoteTexture ( string url )
+    public async Task<Texture> GetRemoteTexture ( string url )
     {
-        using( UnityWebRequest www = UnityWebRequestTexture.GetTexture(url) )
+        using(var request = new UnityWebRequest(url))
         {
-            var asyncOp = www.SendWebRequest();
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Access-Control-Allow-Origin", "*");
+            request.SendWebRequest();
 
-            while( asyncOp.isDone==false )
-                await Task.Delay( 1000/30 );//30 hertz
-        
-            if( www.isNetworkError || www.isHttpError )
-            {
-                Debug.Log( $"{www.error}, URL:{www.url}" );
-                return null;
-            }
-            else
-            {
-                return DownloadHandlerTexture.GetContent(www);
-            }
+            while (!request.isDone) await Task.Yield();
+
+            Texture2D texture = new Texture2D(2, 2);
+            texture.LoadImage(request.downloadHandler.data);
+            var sprite = Sprite.Create(texture, new Rect(0, 0, 256, 256), Vector2.zero, 1f);
+            return sprite.texture;
         }
     }
 }

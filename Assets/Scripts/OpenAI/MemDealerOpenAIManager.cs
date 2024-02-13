@@ -1,58 +1,110 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
+using OpenAI;
 using OpenAI_API;
 using OpenAI_API.Chat;
 using OpenAI_API.Models;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Networking;
+using ChatMessage = OpenAI_API.Chat.ChatMessage;
 
 public class MemDealerOpenAIManager : MonoBehaviour
 {
     private OpenAIAPI _api;
     private List<ChatMessage> _storyChatMessages;
     [SerializeField] private string _storyPrePrompt = "";
-    [SerializeField] private int _numMemories = 3;
+    [SerializeField] public int numMemories = 3;
 
-    public string generatedImageUrl;
     public string generatedStoryString;
     public List<PhotoData> _memoriesForStory;
+    private bool _calledForFullStory = false;
     
     // Start is called before the first frame update
-    void Start()
+    private void Awake()
     {
         // TODO: Place in Env
         var _key = "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";
         _api = new OpenAIAPI(_key);
         // _api = new OpenAIAPI(Environment.GetEnvironmentVariable(_key, EnvironmentVariableTarget.User));
+    }
+
+    void Start()
+    {
+        _memoriesForStory = new List<PhotoData>();
         StartStoryConversation();
     }
 
-    public void AddToCaptionsAndGenerateImage(string caption)
+    private void Update()
     {
-        // var imageUrl = GetImageForCaption(caption);
-        PhotoData data = new PhotoData();
-        data.caption = caption;
-        // data.imageUrl = imageUrl;
-        
-        _memoriesForStory.Add((data));
+        if (_calledForFullStory) return;
+        if (_memoriesForStory.Count < numMemories)
+        {
+            Debug.Log("Waiting for new memories");
+        }
+        else
+        {
+            Debug.Log("Memories ready... ready to call dealer");
+            // if (!_calledForFullStory)
+            //{
+                // _calledForFullStory = true;
+                // GetFullStoryUsingCaptions();
+            // }
+        }
     }
 
-    public async void GetImageForCaption(string caption)
+    public async Task<PhotoData> AddToCaptionsAndGenerateImage(string caption)
     {
-    // TODO: Implement
+        Debug.Log("ADDING NEW MEMORY: " + caption);
+        var imageUrl = await GetImageForCaption(caption);
+        PhotoData data = new PhotoData();
+        data.caption = caption;
+        data.imageUrl = imageUrl;
+        
+        _memoriesForStory.Add((data));
+        Debug.Log("MEMORY COUNT: " + _memoriesForStory.Count);
+        return data;
+    }
+
+    private async Task<string> GetImageForCaption(string caption)
+    {
+        Debug.Log("FETCHING NEW IMAGE FOR CAPTION: " + caption);
+        var prompt = new OpenAI_API.Images.ImageGenerationRequest
+        {
+            Prompt = caption + " (The photo should be in first person perspective, and style it like a hazy dream)",
+            Size = OpenAI_API.Images.ImageSize._256
+        };
+        var response = await _api.ImageGenerations.CreateImageAsync(prompt);
+
+            if (response.Data != null && response.Data.Count > 0)
+            {
+                return response.Data[0].Url;
+            }
+            else
+            {
+                Debug.LogWarning("No image was created from this prompt.");
+                return "";
+            }
+    }
+
+    public bool CheckIfStoryIsReady()
+    {
+        return !String.IsNullOrEmpty(generatedStoryString);
     }
     
+
     public async Task<string> GetFullStoryUsingCaptions()
     {
-        if (_memoriesForStory.Count < _numMemories) return "";
+        if (_memoriesForStory.Count < numMemories) return "";
         ChatMessage userMessage = new ChatMessage();
         userMessage.Role = ChatMessageRole.User;
-        string promptContent = "Generate a short story in first-person POV using the following sentences: ";
+        string promptContent = "Generate a short story (max 7 sentences) in first-person POV using the following memories below. Keep the sentences short and concise, and make the tone feel like the author is dreaming. (The memories below are in chronological order): ";
         for (var i = 0; i < _memoriesForStory.Count; i++)
         {
-            promptContent += $"- {_memoriesForStory[i].caption}";
+            promptContent += $"\n- {_memoriesForStory[i].caption}";
         }
         userMessage.Content = promptContent;
         
@@ -64,7 +116,7 @@ public class MemDealerOpenAIManager : MonoBehaviour
         {
             Model = Model.ChatGPTTurbo,
             Temperature = 0.1,
-            MaxTokens = 50,
+            MaxTokens = 300,
             Messages = _storyChatMessages
         });
 
